@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.profiler.workload_profiler import classify_workload
 import time
 
 from fastapi import FastAPI
@@ -95,6 +96,8 @@ def llm_history(limit: int = 10):
                 "prompt_length": row.prompt_length,
                 "response_length": row.response_length,
 
+	        "workload_class": row.workload_class,
+
                 "latency_seconds": row.latency_seconds,
 
                 "cpu_before": row.cpu_before,
@@ -138,6 +141,11 @@ def generate(request: GenerateRequest):
         3
     )
 
+    workload_class = classify_workload(
+    	latency_seconds=latency,
+    	response_length=len(result["response"])
+)
+
     after_metrics = monitoring_service.get_metrics()
 
     db = SessionLocal()
@@ -152,6 +160,8 @@ def generate(request: GenerateRequest):
             response_length=len(
                 result["response"]
             ),
+
+	    workload_class=workload_class,
 
             latency_seconds=latency,
 
@@ -181,7 +191,8 @@ def generate(request: GenerateRequest):
         db.close()
 
     return {
-        "timestamp": datetime.utcnow(),
-        "response": result["response"],
-        "latency_seconds": latency
-    }
+    "timestamp": datetime.utcnow(),
+    "response": result["response"],
+    "latency_seconds": latency,
+    "workload_class": workload_class
+}
