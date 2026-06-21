@@ -1,3 +1,5 @@
+from app.scheduler.queue_manager import queue_size
+from app.scheduler.rule_scheduler import make_decision
 from datetime import datetime
 from app.profiler.workload_profiler import classify_workload
 import time
@@ -25,6 +27,13 @@ app = FastAPI(
 def startup_event():
     monitoring_service.start()
 
+
+@app.get("/queue")
+def queue_status():
+
+    return {
+        "pending_requests": queue_size()
+    }
 
 @app.get("/")
 def root():
@@ -155,6 +164,11 @@ def generate(request: GenerateRequest):
     workload_class = workload_result["class"]
     workload_score = workload_result["score"]
 
+    decision = make_decision(
+        workload_class=workload_class,
+        metrics=after_metrics
+    )
+
     db = SessionLocal()
 
     try:
@@ -204,5 +218,7 @@ def generate(request: GenerateRequest):
         "response": result["response"],
         "latency_seconds": latency,
         "workload_class": workload_class,
-        "workload_score": workload_score
+        "workload_score": workload_score,
+        "scheduler_decision": decision["decision"],
+        "scheduler_reason": decision["reason"]
     }
