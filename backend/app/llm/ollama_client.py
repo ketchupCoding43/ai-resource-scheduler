@@ -1,6 +1,5 @@
 import requests
 
-
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
 
@@ -19,6 +18,9 @@ def generate_response(
         json=payload,
         timeout=300
     )
+
+    print("Status Code:", response.status_code)
+    print("Response Text:", response.text)
 
     response.raise_for_status()
 
