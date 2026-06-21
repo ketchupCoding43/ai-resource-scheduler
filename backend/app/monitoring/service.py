@@ -1,7 +1,11 @@
 import threading
 import time
+from datetime import datetime
 
 from app.monitoring.collector import get_system_metrics
+
+from app.database.database import SessionLocal
+from app.database.models import SystemMetrics
 
 
 class MonitoringService:
@@ -11,20 +15,48 @@ class MonitoringService:
         self.running = False
         self.thread = None
 
-    def _monitor_loop(self):
-        """
-        Runs continuously in a background thread.
-        Collects metrics every second.
-        """
+    def save_metrics(self, metrics):
+        db = SessionLocal()
 
+        try:
+            record = SystemMetrics(
+                timestamp=datetime.fromisoformat(
+                    metrics["timestamp"]
+                ),
+
+                cpu_usage=metrics["cpu"]["usage_percent"],
+
+                ram_usage=metrics["memory"]["usage_percent"],
+                ram_available_gb=metrics["memory"]["available_gb"],
+
+                gpu_usage=metrics["gpu"]["usage_percent"],
+
+                vram_used_mb=metrics["gpu"]["memory_used_mb"],
+                vram_free_mb=metrics["gpu"]["memory_free_mb"],
+
+                temperature_c=metrics["gpu"]["temperature_c"],
+
+                power_watts=metrics["gpu"]["power_watts"]
+            )
+
+            db.add(record)
+            db.commit()
+
+        except Exception as e:
+            print(f"Database error: {e}")
+
+        finally:
+            db.close()
+
+    def _monitor_loop(self):
         while self.running:
             try:
-                print("Collecting metrics...")
-
                 latest_metrics = get_system_metrics()
 
                 with self.lock:
                     self.metrics = latest_metrics
+
+                self.save_metrics(latest_metrics)
 
             except Exception as e:
                 print(f"Monitoring error: {e}")
@@ -32,10 +64,6 @@ class MonitoringService:
             time.sleep(1)
 
     def start(self):
-        """
-        Start monitoring thread.
-        """
-
         if self.running:
             return
 
@@ -51,17 +79,9 @@ class MonitoringService:
         print("Monitoring service started")
 
     def stop(self):
-        """
-        Stop monitoring thread.
-        """
-
         self.running = False
 
     def get_metrics(self):
-        """
-        Return latest cached metrics.
-        """
-
         with self.lock:
             return self.metrics.copy()
 
