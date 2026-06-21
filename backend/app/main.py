@@ -97,6 +97,7 @@ def llm_history(limit: int = 10):
                 "response_length": row.response_length,
 
 	        "workload_class": row.workload_class,
+		"workload_score": row.workload_score,
 
                 "latency_seconds": row.latency_seconds,
 
@@ -141,12 +142,18 @@ def generate(request: GenerateRequest):
         3
     )
 
-    workload_class = classify_workload(
-    	latency_seconds=latency,
-    	response_length=len(result["response"])
-)
-
     after_metrics = monitoring_service.get_metrics()
+
+    workload_result = classify_workload(
+        prompt_length=len(request.prompt),
+        response_length=len(result["response"]),
+        latency_seconds=latency,
+        gpu_usage=after_metrics["gpu"]["usage_percent"],
+        vram_usage=after_metrics["gpu"]["memory_used_mb"]
+    )
+
+    workload_class = workload_result["class"]
+    workload_score = workload_result["score"]
 
     db = SessionLocal()
 
@@ -161,7 +168,9 @@ def generate(request: GenerateRequest):
                 result["response"]
             ),
 
-	    workload_class=workload_class,
+            workload_class=workload_class,
+
+            workload_score=workload_score,
 
             latency_seconds=latency,
 
@@ -191,8 +200,9 @@ def generate(request: GenerateRequest):
         db.close()
 
     return {
-    "timestamp": datetime.utcnow(),
-    "response": result["response"],
-    "latency_seconds": latency,
-    "workload_class": workload_class
-}
+        "timestamp": datetime.utcnow(),
+        "response": result["response"],
+        "latency_seconds": latency,
+        "workload_class": workload_class,
+        "workload_score": workload_score
+    }

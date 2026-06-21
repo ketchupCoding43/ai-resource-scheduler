@@ -22,6 +22,8 @@ class LLMExecution(Base):
     prompt = Column(Text)
     
     workload_class = Column(Text)
+ 
+    workload_score = Column(Float)
 
     prompt_length = Column(Integer)
 
