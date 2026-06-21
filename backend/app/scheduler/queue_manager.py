@@ -16,3 +16,7 @@ def dequeue():
 
 def queue_size():
     return request_queue.qsize()
+
+
+def queue_position():
+    return request_queue.qsize()

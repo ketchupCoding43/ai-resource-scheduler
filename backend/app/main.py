@@ -1,3 +1,8 @@
+from app.scheduler.queue_manager import (
+    enqueue,
+    dequeue,
+    queue_size
+)
 from app.scheduler.queue_manager import queue_size
 from app.scheduler.rule_scheduler import make_decision
 from datetime import datetime
@@ -138,6 +143,9 @@ def llm_history(limit: int = 10):
 @app.post("/llm/generate")
 def generate(request: GenerateRequest):
 
+    enqueue(request.prompt)
+
+    position_before = queue_size()
     before_metrics = monitoring_service.get_metrics()
 
     start_time = time.time()
@@ -145,6 +153,10 @@ def generate(request: GenerateRequest):
     result = generate_response(
         prompt=request.prompt
     )
+
+    dequeue()
+
+    position_after = queue_size()
 
     latency = round(
         time.time() - start_time,
@@ -214,11 +226,25 @@ def generate(request: GenerateRequest):
         db.close()
 
     return {
-        "timestamp": datetime.utcnow(),
-        "response": result["response"],
-        "latency_seconds": latency,
-        "workload_class": workload_class,
-        "workload_score": workload_score,
-        "scheduler_decision": decision["decision"],
-        "scheduler_reason": decision["reason"]
-    }
+    "timestamp": datetime.utcnow(),
+
+    "response": result["response"],
+
+    "latency_seconds": latency,
+
+    "workload_class": workload_class,
+
+    "workload_score": workload_score,
+
+    "scheduler_decision":
+        decision["decision"],
+
+    "scheduler_reason":
+        decision["reason"],
+
+    "queue_position_before":
+        position_before,
+
+    "queue_size_after":
+        position_after
+}
