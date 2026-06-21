@@ -21,7 +21,7 @@ def get_system_metrics():
     # CPU Metrics
     # =====================
     metrics["cpu"] = {
-        "usage_percent": psutil.cpu_percent(interval=1),
+        "usage_percent": psutil.cpu_percent(interval=None),
         "cores": psutil.cpu_count(logical=True),
     }
 
