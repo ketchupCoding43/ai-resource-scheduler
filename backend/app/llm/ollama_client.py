@@ -2,7 +2,6 @@ import requests
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
-
 def generate_response(
     prompt: str,
     model: str = "qwen2.5-coder:7b"
@@ -24,4 +23,9 @@ def generate_response(
 
     response.raise_for_status()
 
-    return response.json()
+    data = response.json()
+
+    return {
+        "response": data["response"],
+        "model": data["model"]
+    }

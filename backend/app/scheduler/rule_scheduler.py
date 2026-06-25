@@ -1,47 +1,25 @@
-def make_decision(
-    workload_class: str,
-    metrics: dict
-):
+def make_decision(workload_class, metrics, queue_size=0):
 
     ram_usage = metrics["memory"]["usage_percent"]
 
-    gpu_usage = metrics["gpu"]["usage_percent"]
+    gpu_temp = metrics["gpu"]["temperature_c"]
 
-    temperature = metrics["gpu"]["temperature_c"]
-
-    # Critical RAM
-
-    if ram_usage >= 95:
-        return {
-            "decision": "REJECT",
-            "reason": "RAM usage above 95%"
-        }
-
-    # GPU overloaded
-
-    if gpu_usage >= 90:
+    if ram_usage > 85:
         return {
             "decision": "DELAY",
-            "reason": "GPU usage above 90%"
+            "reason": "High RAM utilization"
         }
 
-    # Temperature protection
-
-    if temperature >= 80:
+    if gpu_temp > 80:
         return {
             "decision": "DELAY",
             "reason": "GPU temperature too high"
         }
 
-    # Heavy workloads under pressure
-
-    if (
-        workload_class == "HEAVY"
-        and ram_usage >= 85
-    ):
+    if queue_size > 3:
         return {
             "decision": "DELAY",
-            "reason": "Heavy workload during high RAM usage"
+            "reason": "Queue overloaded"
         }
 
     return {

@@ -20,9 +20,14 @@ class LLMExecution(Base):
     )
 
     prompt = Column(Text)
-    
+
+    model_name = Column(Text)
+
+    predicted_class = Column(Text)
+    predicted_score = Column(Float)
+    prediction_correct = Column(Integer)
+
     workload_class = Column(Text)
- 
     workload_score = Column(Float)
 
     prompt_length = Column(Integer)
