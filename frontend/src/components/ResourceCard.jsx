@@ -38,11 +38,7 @@ export default function ResourceCard() {
     }
 
     return (
-        <div style={{
-            border: "1px solid gray",
-            padding: "20px",
-            borderRadius: "10px"
-        }}>
+        <div className="dashboard-card">
             <h2>Resource Usage</h2>
 
             <p>CPU: {stats.average_cpu}%</p>

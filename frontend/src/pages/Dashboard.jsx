@@ -1,11 +1,9 @@
 import AccuracyCard from "../components/AccuracyCard";
 import LatencyCard from "../components/LatencyCard";
 import ResourceCard from "../components/ResourceCard";
-import WorkloadChart from "../components/WorkloadChart";
+import CostCard from "../components/CostCard";
 import ExecutionTable from "../components/ExecutionTable";
-import ModelUsageCard from "../components/ModelUsageCard";
-import PredictionEvaluationCard from "../components/PredictionEvaluationCard";
-import FeatureInspector from "../components/FeatureInspector";
+import WorkloadChart from "../components/WorkloadChart";
 
 export default function Dashboard() {
 
@@ -17,29 +15,18 @@ export default function Dashboard() {
             <div
                 style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(3, 1fr)",
+                    gridTemplateColumns: "repeat(4, 1fr)",
                     gap: "20px"
                 }}
             >
                 <AccuracyCard />
                 <LatencyCard />
                 <ResourceCard />
+                <CostCard />
             </div>
 
             <div style={{ marginTop: "30px" }}>
                 <WorkloadChart />
-            </div>
-
-            <div style={{ marginTop: "30px" }}>
-                <ModelUsageCard />
-            </div>
-
-            <div style={{ marginTop: "30px" }}>
-                <PredictionEvaluationCard />
-            </div>
-
-            <div style={{ marginTop: "30px" }}>
-                <FeatureInspector />
             </div>
 
             <ExecutionTable />

@@ -38,11 +38,7 @@ export default function LatencyCard() {
     }
 
     return (
-        <div style={{
-            border: "1px solid gray",
-            padding: "20px",
-            borderRadius: "10px"
-        }}>
+        <div className="dashboard-card">
             <h2>Average Latency</h2>
 
             <h1>

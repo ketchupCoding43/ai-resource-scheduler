@@ -1,25 +1,57 @@
-def classify_workload(
-    prompt_length: int,
-    response_length: int,
-    latency_seconds: float,
-    gpu_usage: float,
-    vram_usage: float
-):
+def classify_workload(prompt: str):
 
-    score = (
-        prompt_length / 10
-        + response_length / 50
-        + latency_seconds
-        + gpu_usage / 5
-        + vram_usage / 500
+    prompt_lower = prompt.lower()
+
+    technical_keywords = [
+        "docker",
+        "kubernetes",
+        "api",
+        "database",
+        "python",
+        "fastapi",
+        "machine learning",
+        "deep learning",
+        "neural network",
+        "llm",
+        "transformer",
+        "microservices",
+        "networking",
+        "security",
+        "cloud"
+    ]
+
+    code_keywords = [
+        "code",
+        "implement",
+        "function",
+        "class",
+        "algorithm",
+        "debug",
+        "script"
+    ]
+
+    tech_count = sum(
+        1 for word in technical_keywords
+        if word in prompt_lower
     )
 
-    if score < 30:
+    code_count = sum(
+        1 for word in code_keywords
+        if word in prompt_lower
+    )
+
+    prompt_length = len(prompt)
+
+    score = (
+        prompt_length * 0.2
+        + tech_count * 10
+        + code_count * 15
+    )
+
+    if score < 40:
         workload_class = "LIGHT"
-
-    elif score < 70:
+    elif score < 80:
         workload_class = "MEDIUM"
-
     else:
         workload_class = "HEAVY"
 

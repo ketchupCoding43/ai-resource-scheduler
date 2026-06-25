@@ -27,7 +27,12 @@ class LLMExecution(Base):
 
     predicted_class = Column(Text)
     predicted_score = Column(Float)
+    prediction_confidence = Column(Float)
+    prediction_intent = Column(Text)
+    expected_response_size = Column(Text)
+    complexity_score = Column(Float)
     prediction_correct = Column(Integer)
+    estimated_cost = Column(Float)
 
     workload_class = Column(Text)
     workload_score = Column(Float)
