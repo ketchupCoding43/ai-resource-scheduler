@@ -4,6 +4,8 @@ import ResourceCard from "../components/ResourceCard";
 import WorkloadChart from "../components/WorkloadChart";
 import ExecutionTable from "../components/ExecutionTable";
 import ModelUsageCard from "../components/ModelUsageCard";
+import PredictionEvaluationCard from "../components/PredictionEvaluationCard";
+import FeatureInspector from "../components/FeatureInspector";
 
 export default function Dashboard() {
 
@@ -30,6 +32,14 @@ export default function Dashboard() {
 
             <div style={{ marginTop: "30px" }}>
                 <ModelUsageCard />
+            </div>
+
+            <div style={{ marginTop: "30px" }}>
+                <PredictionEvaluationCard />
+            </div>
+
+            <div style={{ marginTop: "30px" }}>
+                <FeatureInspector />
             </div>
 
             <ExecutionTable />

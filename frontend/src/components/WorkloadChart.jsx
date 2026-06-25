@@ -34,6 +34,10 @@ export default function WorkloadChart() {
                         value: d.HEAVY
                     }
                 ]);
+            })
+            .catch((error) => {
+                console.error("WorkloadChart failed:", error);
+                setData([]);
             });
 
     }, []);

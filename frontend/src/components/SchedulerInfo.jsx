@@ -15,6 +15,7 @@ export default function SchedulerInfo({ result }) {
             <h3 style={{ marginTop: 0 }}>Scheduler Info</h3>
             <p>Selected Model: {result.selected_model || result.model_used}</p>
             <p>Predicted Class: {result.predicted_class}</p>
+            <p>Prediction Confidence: {result.prediction_confidence ?? 0}%</p>
             <p>Workload Class: {result.workload_class}</p>
             <p>Latency: {result.latency_seconds}s</p>
             <p>Decision: {result.scheduler_decision}</p>

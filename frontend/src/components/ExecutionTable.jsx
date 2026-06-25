@@ -10,6 +10,10 @@ export default function ExecutionTable() {
         api.get("/llm/history")
             .then((response) => {
                 setRows(response.data);
+            })
+            .catch((error) => {
+                console.error("ExecutionTable failed:", error);
+                setRows([]);
             });
 
     }, []);
