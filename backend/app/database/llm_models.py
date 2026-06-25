@@ -1,4 +1,5 @@
 from sqlalchemy import Column
+from sqlalchemy import String
 from sqlalchemy import Integer
 from sqlalchemy import Float
 from sqlalchemy import Text
@@ -22,6 +23,7 @@ class LLMExecution(Base):
     prompt = Column(Text)
 
     model_name = Column(Text)
+    selected_model = Column(String)
 
     predicted_class = Column(Text)
     predicted_score = Column(Float)

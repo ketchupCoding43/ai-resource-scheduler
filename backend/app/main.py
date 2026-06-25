@@ -1,6 +1,7 @@
 from app.scheduler.predictive_scheduler import (
     predictive_decision
 )
+from app.scheduler.model_router import select_model
 from app.predictor.workload_predictor import (
     predict_workload
 )
@@ -16,6 +17,7 @@ import time
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.monitoring.service import monitoring_service
 
@@ -28,6 +30,20 @@ from app.llm.ollama_client import generate_response
 
 
 Base.metadata.create_all(bind=engine)
+
+
+def ensure_llm_execution_selected_model_column():
+    with engine.connect() as connection:
+        columns = {
+            row[1]
+            for row in connection.execute(text("PRAGMA table_info(llm_executions)"))
+        }
+
+        if "selected_model" not in columns:
+            connection.execute(
+                text("ALTER TABLE llm_executions ADD COLUMN selected_model VARCHAR")
+            )
+            connection.commit()
 
 app = FastAPI(
     title="AI Resource Scheduler"
@@ -47,6 +63,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 def startup_event():
+    ensure_llm_execution_selected_model_column()
     monitoring_service.start()
 
 
@@ -135,6 +152,29 @@ def workload_distribution():
             "MEDIUM": medium,
             "HEAVY": heavy,
             "TOTAL": len(records)
+        }
+
+    finally:
+        db.close()
+
+
+@app.get("/model/distribution")
+def model_distribution():
+
+    db = SessionLocal()
+
+    try:
+        records = db.query(LLMExecution).all()
+
+        return {
+            "qwen2.5-coder:3b": sum(
+                1 for row in records
+                if (row.selected_model or row.model_name) == "qwen2.5-coder:3b"
+            ),
+            "qwen2.5-coder:7b": sum(
+                1 for row in records
+                if (row.selected_model or row.model_name) == "qwen2.5-coder:7b"
+            )
         }
 
     finally:
@@ -236,6 +276,7 @@ def llm_history(limit: int = 10):
                 "id": row.id,
                 "timestamp": row.timestamp,
                 "model_name": row.model_name,
+                "selected_model": row.selected_model,
                 "predicted_class": row.predicted_class,
                 "predicted_score": row.predicted_score,
                 "prediction_correct": row.prediction_correct,
@@ -319,6 +360,7 @@ def generate(request: GenerateRequest):
 
     predicted_class = prediction["class"]
     predicted_score = prediction["score"]
+    selected_model = select_model(predicted_class)
 
     predictive_result = predictive_decision(
         predicted_class=predicted_class,
@@ -334,6 +376,7 @@ def generate(request: GenerateRequest):
             "timestamp": datetime.utcnow(),
             "scheduler_decision": "DELAY",
             "scheduler_reason": predictive_result["reason"],
+            "selected_model": selected_model,
             "predicted_class": predicted_class,
             "predicted_score": predicted_score,
             "queue_size": queue_size()
@@ -342,7 +385,8 @@ def generate(request: GenerateRequest):
     start_time = time.time()
 
     result = generate_response(
-        prompt=request.prompt
+        prompt=request.prompt,
+        model_name=selected_model
     )
 
     dequeue()
@@ -384,6 +428,7 @@ def generate(request: GenerateRequest):
         execution = LLMExecution(
             prompt=request.prompt,
             model_name=result["model"],
+            selected_model=selected_model,
 
             prompt_length=len(request.prompt),
             response_length=len(result["response"]),
@@ -427,6 +472,7 @@ def generate(request: GenerateRequest):
 
         "response": result["response"],
         "model_used": result["model"],
+        "selected_model": selected_model,
 
         "latency_seconds": latency,
 

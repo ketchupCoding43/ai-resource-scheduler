@@ -4,10 +4,10 @@ OLLAMA_URL = "http://localhost:11434/api/generate"
 
 def generate_response(
     prompt: str,
-    model: str = "qwen2.5-coder:7b"
+    model_name: str = "qwen2.5-coder:7b"
 ):
     payload = {
-        "model": model,
+        "model": model_name,
         "prompt": prompt,
         "stream": False
     }

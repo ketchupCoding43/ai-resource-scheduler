@@ -3,6 +3,7 @@ import LatencyCard from "../components/LatencyCard";
 import ResourceCard from "../components/ResourceCard";
 import WorkloadChart from "../components/WorkloadChart";
 import ExecutionTable from "../components/ExecutionTable";
+import ModelUsageCard from "../components/ModelUsageCard";
 
 export default function Dashboard() {
 
@@ -25,6 +26,10 @@ export default function Dashboard() {
 
             <div style={{ marginTop: "30px" }}>
                 <WorkloadChart />
+            </div>
+
+            <div style={{ marginTop: "30px" }}>
+                <ModelUsageCard />
             </div>
 
             <ExecutionTable />
