@@ -59,3 +59,32 @@ def classify_workload(prompt: str):
         "score": round(score, 2),
         "class": workload_class
     }
+
+
+def classify_runtime_workload(
+    latency_seconds: float,
+    response_length: int,
+    gpu_usage: float,
+    vram_usage: float,
+    ram_usage: float,
+    final_model: str
+):
+    score = 0.0
+    score += min(latency_seconds * 18, 45)
+    score += min(response_length / 50, 20)
+    score += gpu_usage * 0.2
+    score += vram_usage * 0.002
+    score += ram_usage * 0.12
+    score += 8 if final_model == "qwen2.5-coder:7b" else 0
+
+    if score < 40:
+        workload_class = "LIGHT"
+    elif score < 80:
+        workload_class = "MEDIUM"
+    else:
+        workload_class = "HEAVY"
+
+    return {
+        "score": round(score, 2),
+        "class": workload_class,
+    }

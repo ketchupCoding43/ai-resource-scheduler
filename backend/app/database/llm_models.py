@@ -24,6 +24,15 @@ class LLMExecution(Base):
 
     model_name = Column(Text)
     selected_model = Column(String)
+    final_model = Column(String)
+    routing_reason = Column(Text)
+    context_size = Column(Integer)
+    context_reason = Column(Text)
+    confidence_score = Column(Float)
+    confidence_class = Column(Text)
+    escalated = Column(Integer)
+    escalation_reason = Column(Text)
+    vram_safe = Column(Integer)
 
     predicted_class = Column(Text)
     predicted_score = Column(Float)

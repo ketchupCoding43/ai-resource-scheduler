@@ -39,18 +39,22 @@ export default function AccuracyCard() {
 
     return (
         <div className="dashboard-card">
-            <h2>Prediction Accuracy</h2>
+            <h2>Prediction-Execution Alignment</h2>
 
             <h1>
-                {stats.accuracy_percent}%
+                {stats.prediction_execution_alignment_percent ?? stats.accuracy_percent}%
             </h1>
 
             <p>
-                Correct: {stats.correct_predictions}
+                Aligned: {stats.aligned_predictions ?? stats.correct_predictions}
             </p>
 
             <p>
                 Total: {stats.total_predictions}
+            </p>
+
+            <p>
+                Prediction-Execution Alignment
             </p>
         </div>
     );

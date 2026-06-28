@@ -7,15 +7,19 @@ from app.predictor.workload_predictor import (
 )
 from app.predictor.predictor_v2 import predict_workload_v2
 from app.predictor.feature_extractor import extract_features
+from app.predictor.confidence_engine import evaluate_response_confidence
 from app.predictor.evaluator import evaluate_predictor
 from app.scheduler.queue_manager import (
     enqueue,
     dequeue,
     queue_size
 )
+from app.scheduler.model_router import select_model
+from app.scheduler.escalation_scheduler import should_escalate
 from app.scheduler.rule_scheduler import make_decision
+from app.scheduler.final_decision_engine import make_final_decision
 from datetime import datetime
-from app.profiler.workload_profiler import classify_workload
+from app.profiler.workload_profiler import classify_workload, classify_runtime_workload
 import time
 
 from fastapi import FastAPI
@@ -29,6 +33,7 @@ from app.database.database import engine, SessionLocal
 from app.database.models import Base, SystemMetrics
 from app.database.llm_models import LLMExecution
 
+from app.llm.context_optimizer import choose_context_size
 from app.llm.schemas import GenerateRequest
 from app.llm.ollama_client import generate_response
 
@@ -45,6 +50,15 @@ def ensure_llm_execution_columns():
 
         add_columns = [
             ("selected_model", "VARCHAR"),
+            ("final_model", "VARCHAR"),
+            ("routing_reason", "TEXT"),
+            ("context_size", "INTEGER"),
+            ("confidence_score", "FLOAT"),
+            ("confidence_class", "VARCHAR"),
+            ("escalated", "INTEGER"),
+            ("escalation_reason", "TEXT"),
+            ("vram_safe", "INTEGER"),
+            ("context_reason", "TEXT"),
             ("prediction_confidence", "FLOAT"),
             ("prediction_intent", "VARCHAR"),
             ("expected_response_size", "VARCHAR"),
@@ -114,6 +128,77 @@ def prediction_analyze(prompt: str = Query(..., min_length=1)):
 @app.get("/prediction/evaluation")
 def prediction_evaluation():
     return evaluate_predictor()
+
+
+@app.get("/scheduler/escalation/stats")
+def scheduler_escalation_stats():
+    db = SessionLocal()
+
+    try:
+        records = db.query(LLMExecution).all()
+        total_requests = len(records)
+        escalated_requests = sum(1 for row in records if row.escalated == 1)
+        draft_success_requests = total_requests - escalated_requests
+
+        escalation_rate_percent = round((escalated_requests / total_requests) * 100, 2) if total_requests else 0
+        draft_success_rate_percent = round((draft_success_requests / total_requests) * 100, 2) if total_requests else 0
+
+        return {
+            "total_requests": total_requests,
+            "escalated_requests": escalated_requests,
+            "draft_success_requests": draft_success_requests,
+            "escalation_rate_percent": escalation_rate_percent,
+            "draft_success_rate_percent": draft_success_rate_percent,
+        }
+
+    finally:
+        db.close()
+
+
+@app.get("/scheduler/context/stats")
+def scheduler_context_stats():
+    db = SessionLocal()
+
+    try:
+        records = db.query(LLMExecution).all()
+        return {
+            "1024": sum(1 for row in records if row.context_size == 1024),
+            "2048": sum(1 for row in records if row.context_size == 2048),
+            "4096": sum(1 for row in records if row.context_size == 4096),
+        }
+
+    finally:
+        db.close()
+
+
+@app.get("/scheduler/confidence/stats")
+def scheduler_confidence_stats():
+    db = SessionLocal()
+
+    try:
+        records = db.query(LLMExecution).all()
+        total_requests = len(records)
+
+        if total_requests == 0:
+            return {
+                "average_confidence": 0,
+                "high_confidence": 0,
+                "medium_confidence": 0,
+                "low_confidence": 0,
+            }
+
+        confidence_values = [row.confidence_score or 0 for row in records]
+        average_confidence = round(sum(confidence_values) / total_requests, 2)
+
+        return {
+            "average_confidence": average_confidence,
+            "high_confidence": sum(1 for value in confidence_values if value >= 75),
+            "medium_confidence": sum(1 for value in confidence_values if 50 <= value < 75),
+            "low_confidence": sum(1 for value in confidence_values if value < 50),
+        }
+
+    finally:
+        db.close()
 
 
 @app.get("/queue")
@@ -398,6 +483,15 @@ def llm_history(limit: int = 10):
                 "prediction_intent": row.prediction_intent,
                 "expected_response_size": row.expected_response_size,
                 "complexity_score": row.complexity_score,
+                "selected_model": row.selected_model,
+                "final_model": row.final_model,
+                "routing_reason": row.routing_reason,
+                "context_size": row.context_size,
+                "context_reason": row.context_reason,
+                "confidence_score": row.confidence_score,
+                "confidence_class": row.confidence_class,
+                "escalated": row.escalated,
+                "escalation_reason": row.escalation_reason,
                 "prediction_correct": row.prediction_correct,
                 "workload_class": row.workload_class,
                 "workload_score": row.workload_score,
@@ -443,21 +537,18 @@ def prediction_stats():
                 "accuracy_percent": 0
             }
 
-        correct = sum(
-            1
-            for row in records
+        aligned = sum(
+            1 for row in records
             if row.prediction_correct == 1
         )
 
-        accuracy = round(
-            (correct / total) * 100,
-            2
-        )
+        alignment = round((aligned / total) * 100, 2)
 
         return {
             "total_predictions": total,
-            "correct_predictions": correct,
-            "accuracy_percent": accuracy
+            "aligned_predictions": aligned,
+            "prediction_execution_alignment_percent": alignment,
+            "accuracy_percent": alignment,
         }
 
     finally:
@@ -493,39 +584,69 @@ def generate(request: GenerateRequest):
     prediction_intent = prediction["intent"]
     expected_response_size = prediction["expected_response_size"]
     complexity_score = prediction["complexity_score"]
-    selected_model = "qwen2.5-coder:7b" if predicted_class != "LIGHT" else "qwen2.5-coder:3b"
-    estimated_cost = 1.0 if selected_model == "qwen2.5-coder:3b" else 3.0
-
-    predictive_result = predictive_decision(
+    routing = select_model(
         predicted_class=predicted_class,
-        metrics=before_metrics,
-        queue_size=queue_size()
+        predicted_score=predicted_score,
+        metrics=before_metrics
     )
-
-    if predictive_result["decision"] == "DELAY":
-
-        dequeue()
-
-        return {
-            "timestamp": datetime.utcnow(),
-            "scheduler_decision": "DELAY",
-            "scheduler_reason": predictive_result["reason"],
-            "predicted_class": predicted_class,
-            "predicted_score": predicted_score,
-            "prediction_confidence": prediction_confidence,
-            "prediction_intent": prediction_intent,
-            "expected_response_size": expected_response_size,
-            "complexity_score": complexity_score,
-            "estimated_cost": estimated_cost,
-            "queue_size": queue_size()
-        }
+    selected_model = routing["selected_model"]
+    routing_reason = routing["routing_reason"]
+    vram_safe = routing["vram_safe"]
+    context_choice = choose_context_size(
+        prompt=request.prompt,
+        selected_model=selected_model,
+        metrics=before_metrics
+    )
+    context_size = context_choice["context_size"]
+    context_reason = context_choice["reason"]
+    estimated_cost = 1.0 if selected_model == "qwen2.5-coder:3b" else 3.0
 
     start_time = time.time()
 
-    result = generate_response(
+    draft_result = generate_response(
         prompt=request.prompt,
-        model_name=selected_model
+        model_name=selected_model,
+        context_size=context_size
     )
+
+    confidence_result = evaluate_response_confidence(
+        prompt=request.prompt,
+        response=draft_result["response"],
+        predicted_class=predicted_class
+    )
+
+    escalation = should_escalate(
+        confidence_result=confidence_result,
+        predicted_class=predicted_class,
+        selected_model=selected_model
+    )
+
+    final_response = draft_result["response"]
+    final_model = selected_model
+    escalated = False
+    escalation_reason = escalation["reason"]
+    final_context_reason = context_reason
+
+    if escalation["escalate"] and escalation["target_model"]:
+        escalated = True
+        final_model = escalation["target_model"]
+        final_context = choose_context_size(
+            prompt=request.prompt,
+            selected_model=final_model,
+            metrics=before_metrics
+        )
+        final_context_size = final_context["context_size"]
+        final_context_reason = final_context["reason"]
+        escalation_reason = escalation["reason"]
+        final_result = generate_response(
+            prompt=request.prompt,
+            model_name=final_model,
+            context_size=final_context_size
+        )
+        final_response = final_result["response"]
+        context_size = final_context_size
+        context_reason = final_context_reason
+        estimated_cost += 3.0 if final_model == "qwen2.5-coder:7b" else 1.0
 
     dequeue()
 
@@ -538,22 +659,33 @@ def generate(request: GenerateRequest):
 
     after_metrics = monitoring_service.get_metrics()
 
-    workload_result = classify_workload(
-        request.prompt
+    runtime_workload_result = classify_runtime_workload(
+        latency_seconds=latency,
+        response_length=len(final_response),
+        gpu_usage=after_metrics["gpu"]["usage_percent"],
+        vram_usage=after_metrics["gpu"]["memory_used_mb"],
+        ram_usage=after_metrics["memory"]["usage_percent"],
+        final_model=final_model
     )
 
-    workload_class = workload_result["class"]
-    workload_score = workload_result["score"]
+    actual_workload_class = runtime_workload_result["class"]
+    actual_workload_score = runtime_workload_result["score"]
 
     prediction_correct = (
-        predicted_class == workload_class
+        predicted_class == actual_workload_class
     )
 
-    decision = make_decision(
-        workload_class=workload_class,
-        metrics=after_metrics,
-        queue_size=queue_size()
+    decision = make_final_decision(
+        predicted_class=predicted_class,
+        predicted_score=predicted_score,
+        context_size=context_size,
+        before_metrics=before_metrics,
+        selected_model=selected_model
     )
+
+    confidence_score = confidence_result["confidence"]
+    confidence_class = confidence_result["quality_class"]
+    confidence_reasons = confidence_result["reasons"]
 
     db = SessionLocal()
 
@@ -561,11 +693,20 @@ def generate(request: GenerateRequest):
 
         execution = LLMExecution(
             prompt=request.prompt,
-            model_name=result["model"],
+            model_name=final_model,
             selected_model=selected_model,
+            final_model=final_model,
+            routing_reason=routing_reason,
+            context_size=context_size,
+            context_reason=context_reason,
+            confidence_score=confidence_score,
+            confidence_class=confidence_class,
+            escalated=int(escalated),
+            escalation_reason=escalation_reason if escalated else None,
+            vram_safe=int(vram_safe),
 
             prompt_length=len(request.prompt),
-            response_length=len(result["response"]),
+            response_length=len(final_response),
 
             predicted_class=predicted_class,
             predicted_score=predicted_score,
@@ -576,8 +717,8 @@ def generate(request: GenerateRequest):
             estimated_cost=estimated_cost,
             prediction_correct=int(prediction_correct),
 
-            workload_class=workload_class,
-            workload_score=workload_score,
+            workload_class=actual_workload_class,
+            workload_score=actual_workload_score,
 
             latency_seconds=latency,
 
@@ -609,9 +750,19 @@ def generate(request: GenerateRequest):
     return {
         "timestamp": datetime.utcnow(),
 
-        "response": result["response"],
-        "model_used": result["model"],
+        "response": final_response,
+        "model_used": final_model,
         "selected_model": selected_model,
+        "final_model": final_model,
+        "escalated": escalated,
+        "escalation_reason": escalation_reason if escalated else "",
+        "confidence": confidence_score,
+        "confidence_class": confidence_class,
+        "confidence_reasons": confidence_reasons,
+        "context_size": context_size,
+        "context_reason": context_reason,
+        "routing_reason": routing_reason,
+        "vram_safe": vram_safe,
 
         "latency_seconds": latency,
 
@@ -624,11 +775,15 @@ def generate(request: GenerateRequest):
         "estimated_cost": estimated_cost,
         "prediction_correct": prediction_correct,
 
-        "workload_class": workload_class,
-        "workload_score": workload_score,
+        "actual_workload_class": actual_workload_class,
+        "actual_workload_score": actual_workload_score,
+        "workload_class": actual_workload_class,
+        "workload_score": actual_workload_score,
 
         "scheduler_decision": decision["decision"],
+        "decision_reason": decision["reason"],
         "scheduler_reason": decision["reason"],
+        "risk_level": decision["risk_level"],
 
         "queue_position_before": position_before,
         "queue_size_after": position_after

@@ -65,6 +65,19 @@ export default function ChatPage() {
             <ChatWindow messages={messages} />
             <ChatInput onSend={handleSend} disabled={loading} />
             <SchedulerInfo result={schedulerResult} />
+            {schedulerResult && (
+                <div style={{
+                    display: "inline-flex",
+                    padding: "8px 12px",
+                    borderRadius: "999px",
+                    background: schedulerResult.escalated ? "#fee2e2" : "#dcfce7",
+                    color: "#111827",
+                    fontWeight: 700,
+                    width: "fit-content"
+                }}>
+                    {schedulerResult.escalated ? "Escalated to 7B" : "3B draft accepted"}
+                </div>
+            )}
         </div>
     );
 }
